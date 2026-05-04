@@ -5,7 +5,7 @@ import google.generativeai as genai
 import datetime
 import os
 
-# 1. 환경 변수에서 열쇠 가져오기
+# 1. 환경 변수 로드
 api_id = int(os.environ['TELEGRAM_API_ID'])
 api_hash = os.environ['TELEGRAM_API_HASH']
 string_session = os.environ['TELEGRAM_STRING_SESSION']
@@ -19,50 +19,92 @@ target_channels = [
     '@Vegastooza', '@techkorea', '@yuantaresearch', '@SK_Research_Asset'
 ]
 
-async def main():
-    # 2. AI 모델 설정 (최신형 Gemini 3 Flash 모델로 원복)
-    genai.configure(api_key=gemini_key)
-    model = genai.GenerativeModel('gemini-3-flash')
-    
-    # 3. 텔레그램 로그인
-    client = TelegramClient(StringSession(string_session), api_id, api_hash)
-    await client.start()
-
-    # 4. 날짜 및 시간 설정 (한국 시간 기준)
-    today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).replace(hour=0, minute=0, second=0, microsecond=0)
-    now_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
-    
-    raw_data = ""
-    print("🚀 시장 데이터 수집 시작...")
-    
-    for channel in target_channels:
+# 2. 병렬 수집 함수 (속도 최적화)
+async def fetch_channel(client, channel, today, semaphore):
+    async with semaphore:
+        messages = []
         try:
             async for message in client.iter_messages(channel, offset_date=today, reverse=True, limit=50):
                 if message.text and len(message.text) > 20:
-                    raw_data += f"[{channel}] {message.text}\n\n"
-        except Exception:
-            pass
+                    messages.append(f"[{channel}] {message.text}")
+        except Exception as e:
+            print(f"[{channel}] 수집 스킵: {e}")
+        return messages
 
-    # 5. 리포트 생성 및 전송
-    if raw_data:
-        try:
-            # 안전장치: 데이터가 너무 방대하면 AI가 읽기 편하게 앞부분 20,000자만 사용
-            if len(raw_data) > 20000:
-                raw_data = raw_data[:20000] + "\n\n...(이하 생략)"
-
-            print("🧠 AI 분석 중...")
-            prompt = f"당신은 주식 투자 전문가입니다. {now_str} 기준 수집된 정보를 바탕으로 인사이트 중심의 투자 리포트를 작성하세요.\n\n{raw_data}"
-            response = model.generate_content(prompt)
-            
-            await client.send_message('@tisonpowerbot', response.text)
-            print("✅ 전송 성공!")
-        except Exception as ai_e:
-            # 한도 초과 시 메시지
-            await client.send_message('@tisonpowerbot', f"⚠️ 구글 AI 한도 초과로 요약이 불가능합니다. 수집된 원문 일부를 전송합니다.\n\n{raw_data[:500]}")
-    else:
-        await client.send_message('@tisonpowerbot', "📥 현재 수집된 새로운 시장 데이터가 없습니다.")
+async def main():
+    # 텔레그램 로그인
+    client = TelegramClient(StringSession(string_session), api_id, api_hash)
+    await client.start()
     
-    await client.disconnect()
+    try:
+        # 3. AI 모델 설정 (고품질 분석을 위해 2.5 Flash 확정)
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        now = datetime.datetime.now(kst)
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        now_str = now.strftime('%Y-%m-%d %H:%M KST')
+
+        print("🚀 병렬 수집 시작 (동시 5개 채널)...")
+        semaphore = asyncio.Semaphore(5)
+        tasks = [fetch_channel(client, ch, today, semaphore) for ch in target_channels]
+        results = await asyncio.gather(*tasks)
+        
+        # 수집된 데이터 결합
+        raw_data = "\n\n".join([msg for sublist in results for msg in sublist])
+
+        if not raw_data:
+            await client.send_message('@tisonpowerbot', "📥 오늘 수집된 새로운 데이터가 없습니다.")
+            return
+
+        # 4. 데이터 상한선 (토큰 제한 방어, 80,000자 제한)
+        if len(raw_data) > 80000:
+            raw_data = raw_data[:80000] + "\n\n...(데이터 과다로 이하 생략)"
+
+        # 5. 전문가용 구조화 프롬프트
+        prompt = f"""
+당신은 20년 경력의 수석 매크로/퀀트 전략가입니다.
+분석 기준 시각: {now_str}
+
+[분석 우선순위]
+1. AI 반도체 및 전력 인프라 특이 동향 (최우선)
+2. 주요 매크로 지표 변화 (VIX, 환율, 금리, 유가)
+3. 섹터 로테이션 및 기관/외인 자금 이동 신호
+
+[보고서 필수 양식]
+## 📊 핵심 테마 (3줄 요약)
+## 🏢 섹터별 핵심 포인트
+- AI/반도체:
+- 매크로/글로벌:
+- 국내(KOSPI/KOSDAQ):
+- 기타 섹터:
+## 🎯 투자 핵심 키워드 TOP 5
+## ⚠️ 리스크 관리 및 내일 주목 일정
+
+[수집된 시장 데이터]
+{raw_data}
+"""
+        print("🧠 수석 전략가 모드로 AI 분석 중 (Gemini 2.5 Flash)...")
+        response = model.generate_content(prompt)
+        
+        # 6. 텔레그램 4000자 단위 청크 분할 전송 (긴 리포트 짤림 방지)
+        text = response.text
+        max_len = 4000
+        for i in range(0, len(text), max_len):
+            await client.send_message('@tisonpowerbot', text[i:i+max_len])
+            await asyncio.sleep(1) # 연속 전송 시 텔레그램 서버 차단 방지
+        
+        print("✅ 리포트 전송 완료!")
+
+    except Exception as e:
+        # 에러 발생 시 텔레그램으로 알림
+        error_msg = f"🚨 리포트 자동 생성 실패\n오류: {str(e)[:200]}"
+        await client.send_message('@tisonpowerbot', error_msg)
+        print(error_msg)
+    finally:
+        # 작업이 끝나면 반드시 텔레그램 연결 종료
+        await client.disconnect()
 
 if __name__ == "__main__":
     asyncio.run(main())
