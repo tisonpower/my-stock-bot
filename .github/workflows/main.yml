@@ -2,7 +2,9 @@ name: Daily Stock Analysis
 
 on:
   schedule:
-    - cron: '0 20,8 * * *' 
+    # 💡 한국 시간(KST) 오전 5시 15분, 오후 5시 15분 실행으로 변경
+    # 정각(0분)을 피해야 깃허브 서버 지연을 줄일 수 있습니다.
+    - cron: '15 20,8 * * *'
   workflow_dispatch:
 
 jobs:
