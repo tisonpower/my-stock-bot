@@ -5,6 +5,7 @@ import google.generativeai as genai
 import datetime
 import os
 
+# 1. 환경 변수에서 열쇠 가져오기
 api_id = int(os.environ['TELEGRAM_API_ID'])
 api_hash = os.environ['TELEGRAM_API_HASH']
 string_session = os.environ['TELEGRAM_STRING_SESSION']
@@ -19,42 +20,47 @@ target_channels = [
 ]
 
 async def main():
+    # 2. AI 모델 설정 (최신형 Gemini 3 Flash 모델로 원복)
     genai.configure(api_key=gemini_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-3-flash')
     
+    # 3. 텔레그램 로그인
     client = TelegramClient(StringSession(string_session), api_id, api_hash)
     await client.start()
 
+    # 4. 날짜 및 시간 설정 (한국 시간 기준)
     today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).replace(hour=0, minute=0, second=0, microsecond=0)
     now_str = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
     
     raw_data = ""
+    print("🚀 시장 데이터 수집 시작...")
+    
     for channel in target_channels:
         try:
             async for message in client.iter_messages(channel, offset_date=today, reverse=True, limit=50):
                 if message.text and len(message.text) > 20:
                     raw_data += f"[{channel}] {message.text}\n\n"
         except Exception:
-            pass # 에러 메시지 생략
+            pass
 
+    # 5. 리포트 생성 및 전송
     if raw_data:
         try:
-            # 💡 [핵심 수정] 데이터가 너무 길면 앞에서부터 15,000자까지만 자릅니다.
-            max_length = 15000 
-            if len(raw_data) > max_length:
-                raw_data = raw_data[:max_length] + "\n\n... (데이터가 너무 길어 일부 생략됨)"
-                
-            prompt = f"당신은 20년 경력의 주식 전략가입니다. {now_str} 기준 다음 수집된 정보를 요약 분석하여 투자 리포트를 작성하세요.\n\n{raw_data}"
+            # 안전장치: 데이터가 너무 방대하면 AI가 읽기 편하게 앞부분 20,000자만 사용
+            if len(raw_data) > 20000:
+                raw_data = raw_data[:20000] + "\n\n...(이하 생략)"
+
+            print("🧠 AI 분석 중...")
+            prompt = f"당신은 주식 투자 전문가입니다. {now_str} 기준 수집된 정보를 바탕으로 인사이트 중심의 투자 리포트를 작성하세요.\n\n{raw_data}"
             response = model.generate_content(prompt)
-            await client.send_message('@tisonpowerbot', response.text)
-            print("✅ 분석 리포트 전송 성공!")
             
+            await client.send_message('@tisonpowerbot', response.text)
+            print("✅ 전송 성공!")
         except Exception as ai_e:
-            # 혹시라도 또 에러가 나면 무슨 에러인지 상세히 출력
-            print(f"AI 에러 상세: {ai_e}") 
-            await client.send_message('@tisonpowerbot', f"⚠️ AI 분석 오류 발생. 수집된 데이터 일부 전송:\n\n{raw_data[:500]}")
+            # 한도 초과 시 메시지
+            await client.send_message('@tisonpowerbot', f"⚠️ 구글 AI 한도 초과로 요약이 불가능합니다. 수집된 원문 일부를 전송합니다.\n\n{raw_data[:500]}")
     else:
-        await client.send_message('@tisonpowerbot', "📥 오늘 수집된 데이터가 없습니다.")
+        await client.send_message('@tisonpowerbot', "📥 현재 수집된 새로운 시장 데이터가 없습니다.")
     
     await client.disconnect()
 
