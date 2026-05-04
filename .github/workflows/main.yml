@@ -2,9 +2,8 @@ name: Daily Stock Analysis
 
 on:
   schedule:
-    # 💡 UTC 시간 기준입니다. 한국 시간 오후 6시는 '9 9 * * *' 입니다.
     - cron: '0 9 * * *' 
-  workflow_dispatch: # 버튼 눌러서 수동 실행도 가능하게 함
+  workflow_dispatch:
 
 jobs:
   build:
@@ -16,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.9'  # 👈 이 부분의 간격이 중요합니다!
 
       - name: Install dependencies
         run: |
