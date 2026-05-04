@@ -2,9 +2,8 @@ name: Daily Stock Analysis
 
 on:
   schedule:
-    # 💡 한국 시간(KST) 오전 5시 15분, 오후 5시 15분 실행으로 변경
-    # 정각(0분)을 피해야 깃허브 서버 지연을 줄일 수 있습니다.
-    - cron: '15 20,8 * * *'
+    # 한국 시간(KST) 오전 5시 15분, 오후 5시 15분에 실행 (깃허브 서버 지연 방지용)
+    - cron: '15 20,8 * * *' 
   workflow_dispatch:
 
 jobs:
@@ -19,9 +18,10 @@ jobs:
         with:
           python-version: '3.9'
 
+      # 로봇에게 차트 분석용 도구(yfinance, pandas) 쥐여주기
       - name: Install dependencies
         run: |
-          pip install telethon google-generativeai
+          pip install telethon google-generativeai yfinance pandas
 
       - name: Run script
         env:
@@ -29,5 +29,4 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
-        # 💡 [중요] 링크 형식을 제거하고 순수 파일명만 남겼습니다.
         run: python bot.py
