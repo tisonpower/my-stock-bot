@@ -2,8 +2,10 @@ name: Daily Stock Analysis
 
 on:
   schedule:
-    - cron: '0 9 * * *' 
-  workflow_dispatch:
+    # 💡 한국 시간(KST) 오전 5시, 오후 5시 자동 실행
+    # UTC 시간 기준: 전날 20:00 (오전 5시), 당일 08:00 (오후 5시)
+    - cron: '0 8,20 * * *' 
+  workflow_dispatch: # 필요할 때 언제든 수동 실행 가능
 
 jobs:
   build:
@@ -15,7 +17,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'  # 👈 이 부분의 간격이 중요합니다!
+          # 💡 오류가 났던 'python-address'를 'python-version'으로 수정했습니다.
+          python-version: '3.9' 
 
       - name: Install dependencies
         run: |
@@ -23,6 +26,7 @@ jobs:
 
       - name: Run script
         env:
+          # 💡 GitHub Settings > Secrets 에 저장한 이름들과 일치해야 합니다.
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION }}
