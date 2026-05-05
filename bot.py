@@ -13,8 +13,7 @@ gemini_key = os.environ['GEMINI_KEY']
 
 target_channels = ['@bornlupin', '@kwusa', 
     '@meritz_research', '@EarlyStock1', '@hslpartners', '@valjuman', 
-    '@gaoshoukorea', '@Jstockclass', '@daishinstrategy', '@invesqz', 
-    '@BRILLER_Research', '@ehdwl', '@djbmanager', '@kisthemacro', 
+    '@Jstockclass', '@daishinstrategy','@BRILLER_Research', '@ehdwl', '@djbmanager', '@kisthemacro', 
     '@Vegastooza', '@techkorea', '@yuantaresearch', '@SK_Research_Asset'
 ]
 
