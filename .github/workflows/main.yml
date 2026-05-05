@@ -2,8 +2,7 @@ name: Daily Stock Analysis
 
 on:
   schedule:
-    # 한국 시간(KST) 오전 5시 15분, 오후 5시 15분에 실행 (깃허브 서버 지연 방지용)
-    - cron: '15 20,8 * * *' 
+    - cron: '15 8,20 * * *' 
   workflow_dispatch:
 
 jobs:
@@ -18,10 +17,10 @@ jobs:
         with:
           python-version: '3.9'
 
-      # 로봇에게 차트 분석용 도구(yfinance, pandas) 쥐여주기
       - name: Install dependencies
+        # 💡 pillow, yfinance, pandas 등 클로드의 권장 라이브러리 완벽 추가
         run: |
-          pip install telethon google-generativeai yfinance pandas
+          pip install telethon google-generativeai yfinance pandas pillow
 
       - name: Run script
         env:
