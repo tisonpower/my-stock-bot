@@ -38,7 +38,7 @@ async def main():
     try:
         # ✅ 무료 한도가 넉넉하고 안정적인 1.5 Flash 버전으로 원복
         genai.configure(api_key=gemini_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         kst = datetime.timezone(datetime.timedelta(hours=9))
         now = datetime.datetime.now(kst)
