@@ -7,13 +7,12 @@ import pandas as pd
 import datetime
 import os
 
-# 1. 깃허브에 숨겨둔 비밀번호 가져오기
+# 1. 환경 변수 로드
 api_id = int(os.environ['TELEGRAM_API_ID'])
 api_hash = os.environ['TELEGRAM_API_HASH']
 string_session = os.environ['TELEGRAM_STRING_SESSION']
 gemini_key = os.environ['GEMINI_KEY']
 
-# 정보 수집용 텔레그램 채널들
 target_channels = [
     '@FastStockNewsUSA', '@bornlupin', '@HANAchina', '@kwusa', 
     '@meritz_research', '@EarlyStock1', '@hslpartners', '@valjuman', 
@@ -22,7 +21,7 @@ target_channels = [
     '@Vegastooza', '@techkorea', '@yuantaresearch', '@SK_Research_Asset'
 ]
 
-# (기능 1) 텔레그램 채널 수집 도구
+# 병렬 수집 함수
 async def fetch_channel(client, channel, today, semaphore):
     async with semaphore:
         messages = []
@@ -30,111 +29,162 @@ async def fetch_channel(client, channel, today, semaphore):
             async for message in client.iter_messages(channel, offset_date=today, reverse=True, limit=50):
                 if message.text and len(message.text) > 20:
                     messages.append(f"[{channel}] {message.text}")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[{channel}] 수집 스킵: {e}")
         return messages
 
-# (기능 2) 마크 미너비니 차트 분석 도구
+# ✅ 티커 유효성 검사 함수 (한국 주식 및 잘못된 티커 걸러내기)
+def validate_ticker(ticker):
+    try:
+        test = yf.Ticker(ticker).fast_info
+        return hasattr(test, 'last_price') and test.last_price is not None
+    except:
+        return False
+
+# ✅ 미너비니 진단 및 ATR 손절가 계산 함수
 def check_minervini_status(ticker):
     try:
-        df = yf.download(ticker, period="1y", progress=False)
-        if df.empty or len(df) < 200: return "⚠️ 상장 기간이 짧아 데이터가 부족합니다."
+        # 버그 1 수정: 200일선 계산을 위해 18개월 데이터 확보
+        df = yf.download(ticker, period="18mo", progress=False)
+        if len(df) < 200: 
+            return f"⚠️ {ticker}: 데이터 부족 (상장 200일 미만)"
+        
+        close = float(df['Close'].iloc[-1])
+        sma50 = float(df['Close'].rolling(window=50).mean().iloc[-1])
+        sma150 = float(df['Close'].rolling(window=150).mean().iloc[-1])
+        sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1])
+        high_52w = float(df['High'].rolling(window=252).max().iloc[-1])
+        low_52w = float(df['Low'].rolling(window=252).min().iloc[-1])
 
-        df['MA50'] = df['Close'].rolling(window=50).mean()
-        df['MA150'] = df['Close'].rolling(window=150).mean()
-        df['MA200'] = df['Close'].rolling(window=200).mean()
+        # 미너비니 조건 검사
+        cond1 = close > sma150 and close > sma200
+        cond2 = sma150 > sma200
+        cond3 = sma50 > sma150 and sma50 > sma200
+        cond4 = close > sma50
+        cond5 = close >= low_52w * 1.3
+        cond6 = close >= high_52w * 0.75
 
-        close = float(df['Close'].iloc[-1].iloc[0] if isinstance(df['Close'].iloc[-1], pd.Series) else df['Close'].iloc[-1])
-        ma50 = float(df['MA50'].iloc[-1].iloc[0] if isinstance(df['MA50'].iloc[-1], pd.Series) else df['MA50'].iloc[-1])
-        ma150 = float(df['MA150'].iloc[-1].iloc[0] if isinstance(df['MA150'].iloc[-1], pd.Series) else df['MA150'].iloc[-1])
-        ma200 = float(df['MA200'].iloc[-1].iloc[0] if isinstance(df['MA200'].iloc[-1], pd.Series) else df['MA200'].iloc[-1])
+        # 개선 2 반영: ATR 기반 손절가 계산
+        high = df['High'].squeeze()
+        low = df['Low'].squeeze()
+        prev_close = df['Close'].squeeze().shift(1)
+        tr = pd.concat([
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs()
+        ], axis=1).max(axis=1)
+        atr14 = float(tr.rolling(14).mean().iloc[-1])
+        atr_stop = close - (atr14 * 2.5)
 
-        is_uptrend = (close > ma50) and (ma50 > ma150) and (ma150 > ma200)
-        ma200_1month_ago = float(df['MA200'].iloc[-20].iloc[0] if isinstance(df['MA200'].iloc[-20], pd.Series) else df['MA200'].iloc[-20])
-        is_ma200_rising = ma200 > ma200_1month_ago
+        status_str = "🟢 강세 (미너비니 조건 충족)" if all([cond1, cond2, cond3, cond4, cond5, cond6]) else "🔴 조정/약세"
+        
+        result = f"📌 {ticker} 현재가: ${close:.2f} ({status_str})\n"
+        result += f"   └ ATR 손절가: ${atr_stop:.2f} (현재가 대비 {(atr_stop/close-1)*100:.1f}%)"
+        return result
+    except Exception as e:
+        return f"⚠️ {ticker}: 분석 오류"
 
-        if is_uptrend and is_ma200_rising: return "🟢 완벽한 정배열 상승 추세 (Hold 권장)"
-        elif close < ma200: return "🚨 위험: 200일선 아래로 떨어졌습니다. (매도 고려)"
-        elif close < ma50: return "🟡 경고: 50일선을 이탈했습니다. 단기 하락 주의."
-        else: return "⚪ 베이스(바닥)를 다지는 횡보 구간입니다."
-    except Exception:
-        return "종목을 찾을 수 없거나 분석 중 오류가 발생했습니다."
-
-# 메인 실행 로직
 async def main():
     client = TelegramClient(StringSession(string_session), api_id, api_hash)
     await client.start()
-    genai.configure(api_key=gemini_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
     
-    kst = datetime.timezone(datetime.timedelta(hours=9))
-    now = datetime.datetime.now(kst)
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    now_str = now.strftime('%Y-%m-%d %H:%M KST')
-
     try:
-        # ==========================================
-        # [작업 1] 시황 뉴스 수집 및 요약 리포트 전송
-        # ==========================================
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        now = datetime.datetime.now(kst)
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        now_str = now.strftime('%Y-%m-%d %H:%M KST')
+
+        print("🚀 시장 데이터 수집 시작...")
         semaphore = asyncio.Semaphore(5)
         tasks = [fetch_channel(client, ch, today, semaphore) for ch in target_channels]
         results = await asyncio.gather(*tasks)
+        
         raw_data = "\n\n".join([msg for sublist in results for msg in sublist])
 
-        if raw_data:
-            if len(raw_data) > 60000: raw_data = raw_data[:60000]
-            prompt_news = f"""
-당신은 수석 매크로 전략가입니다. {now_str} 기준 아래 데이터를 분석하세요.
-[보고서 필수 양식]
-## 📊 오늘의 핵심 테마 (3줄)
-## 🏢 섹터별 핵심 동향 (AI/반도체, 매크로 등)
-[수집 데이터]\n{raw_data}
-"""
-            response_news = model.generate_content(prompt_news)
-            text = response_news.text
-            
-            # 텔레그램 서버 에러 방지를 위해 4000자씩 나눠서 전송
-            for i in range(0, len(text), 4000):
-                await client.send_message('@tisonpowerbot', text[i:i+4000])
-                await asyncio.sleep(1) 
-        else:
-            await client.send_message('@tisonpowerbot', "📥 오늘 수집된 새로운 시장 뉴스가 없습니다.")
+        if not raw_data:
+            await client.send_message('@tisonpowerbot', "📥 오늘 수집된 데이터 없음")
+            return
 
-        # ==========================================
-        # [작업 2] 내 포트폴리오 이미지 찾기 & 차트 분석 전송
-        # ==========================================
-        image_path = None
+        if len(raw_data) > 60000:
+            raw_data = raw_data[:60000] + "\n\n...(이하 생략)"
+
+        # 개선 3 반영: 구조화된 퀀트 전문가 프롬프트
+        prompt_news = f"""
+당신은 수석 매크로/퀀트 전략가입니다. {now_str} 기준 분석하세요.
+
+[분석 우선순위]
+- AI 반도체/전력 인프라 특이 동향 최우선
+- 매크로 지표 변화 (VIX, 환율, 금리, 유가)
+- 섹터 로테이션 자금 이동 신호
+
+[보고서 필수 양식]
+## 📊 핵심 테마 (3줄 요약)
+## 🏢 섹터별 분석
+- AI/반도체:
+- 매크로/글로벌:
+- 국내(KOSPI):
+- 원자력/에너지:
+## 🎯 핵심 키워드 TOP 5
+## ⚠️ 리스크 및 내일 주목 이벤트
+
+[수집 데이터]
+{raw_data}
+"""
+        print("🧠 시황 리포트 AI 분석 중...")
+        response = model.generate_content(prompt_news)
         
-        # 봇과의 대화방에서 최근 30개 대화를 뒤져서 '가장 마지막 사진' 찾기
-        async for message in client.iter_messages('@tisonpowerbot', limit=30):
-            if message.photo:
-                image_path = await message.download_media()
-                break
-                
-        if image_path:
-            # 사진을 구글 AI에게 보여주고 종목 기호(Ticker) 뽑아내기
+        # 텔레그램 분할 전송
+        text = response.text
+        for i in range(0, len(text), 4000):
+            await client.send_message('@tisonpowerbot', text[i:i+4000])
+            await asyncio.sleep(1)
+
+        # ----------------------------------------------------
+        # 📸 포트폴리오 이미지 기반 분석 플로우 (Gemini 파일 삭제 포함)
+        # ----------------------------------------------------
+        # (주의: image_path는 텔레그램 등에서 다운로드 받은 이미지 경로를 가정합니다)
+        image_path = "portfolio.jpg" 
+        
+        if os.path.exists(image_path):
+            print("📸 포트폴리오 이미지 분석 시작...")
+            # 버그 2 반영: Gemini 서버 파일 삭제 보장 로직
             myfile = genai.upload_file(image_path)
-            prompt_img = "이 주식 계좌 잔고 사진에 있는 종목명을 Yahoo Finance에서 검색 가능한 Ticker 기호로 변환해. (예: AAPL, 005930.KS). 다른 말은 쓰지 말고 쉼표로 구분된 Ticker만 한 줄로 출력해."
-            response_img = model.generate_content([myfile, prompt_img])
-            tickers = [t.strip() for t in response_img.text.split(',') if t.strip()]
-            
-            if tickers:
-                report_pf = f"🎯 **[{now_str}] 내 포트폴리오 미너비니 진단 리포트**\n\n"
-                # 뽑아낸 종목들 차트 분석 시작
-                for ticker in tickers:
-                    status = check_minervini_status(ticker)
-                    report_pf += f"🔹 **{ticker}**\n   └ 상태: {status}\n\n"
+            try:
+                prompt_img = "이 포트폴리오 이미지에 있는 주식 티커(알파벳)만 쉼표(,)로 구분해서 나열해줘."
+                response_img = model.generate_content([myfile, prompt_img])
                 
-                await client.send_message('@tisonpowerbot', report_pf)
-            
-            # 분석 끝난 사진 파일 삭제
-            if os.path.exists(image_path):
-                os.remove(image_path)
-        else:
-            await client.send_message('@tisonpowerbot', "📸 내 종목 분석을 원하시면, 채팅방에 주식 잔고 캡처 사진을 올려주세요!")
+                tickers_raw = [t.strip().upper() for t in response_img.text.split(',') if t.strip()]
+                
+                # 티커 유효성 검증
+                valid_tickers = [t for t in tickers_raw if validate_ticker(t)]
+                invalid_tickers = set(tickers_raw) - set(valid_tickers)
+                
+                report_pf = "\n\n📈 [포트폴리오 종목 미너비니 & ATR 진단]\n\n"
+                
+                if invalid_tickers:
+                    report_pf += f"⚠️ 인식 불가 종목(또는 한국주식): {', '.join(invalid_tickers)}\n\n"
+
+                for t in valid_tickers:
+                    report_pf += check_minervini_status(t) + "\n\n"
+                
+                # 진단 결과 전송
+                for i in range(0, len(report_pf), 4000):
+                    await client.send_message('@tisonpowerbot', report_pf[i:i+4000])
+                    await asyncio.sleep(1)
+                    
+            finally:
+                # 무조건 실행되어 서버 및 로컬 찌꺼기를 치우는 청소부 로직
+                genai.delete_file(myfile.name)
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+                    
+        print("✅ 전체 전송 완료!")
 
     except Exception as e:
-        await client.send_message('@tisonpowerbot', f"🚨 프로그램 오류 발생: {str(e)[:200]}")
+        await client.send_message('@tisonpowerbot', f"🚨 프로그램 오류 발생:\n{str(e)[:200]}")
     finally:
         await client.disconnect()
 
