@@ -11,8 +11,7 @@ api_hash = os.environ['TELEGRAM_API_HASH']
 string_session = os.environ['TELEGRAM_STRING_SESSION']
 gemini_key = os.environ['GEMINI_KEY']
 
-target_channels = [
-    '@FastStockNewsUSA', '@bornlupin', '@HANAchina', '@kwusa', 
+target_channels = ['@bornlupin', '@kwusa', 
     '@meritz_research', '@EarlyStock1', '@hslpartners', '@valjuman', 
     '@gaoshoukorea', '@Jstockclass', '@daishinstrategy', '@invesqz', 
     '@BRILLER_Research', '@ehdwl', '@djbmanager', '@kisthemacro', 
