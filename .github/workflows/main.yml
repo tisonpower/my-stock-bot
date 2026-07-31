@@ -18,9 +18,9 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        # 순수하게 텔레그램 수집과 AI 요약에 필요한 2개만 남겼습니다.
+        # KIS API 호출을 위해 requests 라이브러리를 추가했습니다.
         run: |
-          pip install telethon google-generativeai
+          pip install telethon google-generativeai requests
 
       - name: Run script
         env:
@@ -28,4 +28,6 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
         run: python bot.py
