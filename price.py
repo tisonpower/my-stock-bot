@@ -135,11 +135,10 @@ async def main():
             }
         }
 
-        # 시각적으로 예쁘게 꾸민 텔레그램 리포트 포맷
         final_message = f"🎯 **[{now_str} 마감 글로벌 시황판]**\n"
         final_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        print("정밀 데이터 수집 시작 (S&P/나스닥 및 추가 종목 포함)...")
+        print("정밀 데이터 수집 시작 (색상 수정 반영)...")
         
         for category, items in portfolio.items():
             final_message += f"**{category}**\n"
@@ -151,15 +150,14 @@ async def main():
                     info = get_yahoo_price(ticker)
                 
                 if info:
-                    # 직관적인 기호 및 색상 적용
+                    # 💡 [핵심 수정] 빨간색, 파란색 원으로 직관적인 색상 구분
                     if info['change'] > 0:
-                        sign = "🔺+"
+                        sign = "🔴 +"
                     elif info['change'] < 0:
-                        sign = "🔻"
+                        sign = "🔵 " # 음수는 숫자에 이미 '-' 기호가 붙어 나옵니다.
                     else:
-                        sign = "➖"
+                        sign = "⚪️ "
                         
-                    # 가격 포맷팅 (원화는 정수 콤마, 달러/지수는 소수점 2자리)
                     if info['unit'] == "원":
                         price_str = f"{int(info['price']):,}"
                     else:
