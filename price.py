@@ -51,21 +51,23 @@ def get_yahoo_price(ticker):
     try:
         stock = yf.Ticker(ticker)
         
-        # 💡 [핵심 수정] 오류가 잦은 history() 대신, 빠르고 정확한 fast_info 실시간 마감가 사용
-        price = stock.fast_info.last_price
-        prev_close = stock.fast_info.previous_close
-        
-        if price is None or prev_close is None:
-            return None
-
-        change = ((price - prev_close) / prev_close) * 100
-        
-        # 환율이나 지수는 소수점 2자리, 주식은 2자리
-        unit = "pt" if "^" in ticker else "$"
-        if "KRW" in ticker: unit = "원"
-        if ticker in ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZW=F"]: unit = "$"
-        
-        return {"price": round(price, 2), "change": round(change, 2), "unit": unit}
+        # 💡 [핵심 수정] prepost=True 를 추가하여 애프터마켓(시간외 거래) 데이터까지 가져옵니다.
+        todays_data = stock.history(period='1d', prepost=True)
+        if not todays_data.empty:
+            # 애프터마켓이 포함된 가장 마지막 체결가
+            price = todays_data['Close'].iloc[-1]
+            
+            # 전일 정규장 종가 (등락률 계산의 기준점)
+            prev_close = stock.fast_info.previous_close
+            
+            if price is not None and prev_close is not None:
+                change = ((price - prev_close) / prev_close) * 100
+                
+                unit = "pt" if "^" in ticker else "$"
+                if "KRW" in ticker: unit = "원"
+                if ticker in ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZW=F"]: unit = "$"
+                
+                return {"price": round(price, 2), "change": round(change, 2), "unit": unit}
     except Exception as e:
         pass
     return None
@@ -135,7 +137,7 @@ async def main():
 
         final_message = f"🎯 **[{now_str} 글로벌 마감 시황]**\n\n"
         
-        print("데이터 수집 시작...")
+        print("데이터 수집 시작 (애프터마켓 포함)...")
         
         for category, items in portfolio.items():
             final_message += f"**[{category}]**\n"
