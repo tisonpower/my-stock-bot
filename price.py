@@ -53,6 +53,10 @@ async def main():
     await client.start()
     
     try:
+        # 💡 [여기가 해결책입니다!] 로봇이 방 이름을 찾을 수 있도록 채팅방 목록을 먼저 불러옵니다.
+        print("🔄 텔레그램 채팅방 목록 찾는 중...")
+        await client.get_dialogs()
+
         kst = datetime.timezone(datetime.timedelta(hours=9))
         now_str = datetime.datetime.now(kst).strftime('%Y-%m-%d %H:%M KST')
 
@@ -61,11 +65,10 @@ async def main():
             await client.send_message('주식정리방', "KIS 토큰 발급에 실패했습니다.")
             return
 
-        # 💡여기에 원하는 종목 코드와 이름을 적으시면 됩니다.
         tickers = {
             "005930": "삼성전자", 
             "000660": "SK하이닉스", 
-            "069500": "KODEX 200 (코스피)",
+            "069500": "KODEX 200",
             "133690": "TIGER 미국나스닥100"
         }
         
