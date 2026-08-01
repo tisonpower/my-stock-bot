@@ -3,7 +3,7 @@ name: Send Stock Price Only
 on:
   schedule:
     # 한국장 마감(15:40) -> UTC 06:40 / 미국장 마감(06:40) -> UTC 21:40
-    - cron: '40 6,21 * * 1-5' 
+    - cron: '40 6,21 * * 1-6' 
   workflow_dispatch:
 
 jobs:
