@@ -51,7 +51,6 @@ def get_yahoo_price(ticker):
     try:
         stock = yf.Ticker(ticker)
         
-        # 최신 종가(애프터마켓 포함)와 정확한 전일 정규장 마감가 비교 로직
         latest_data = stock.history(period='1d', prepost=True)
         hist_regular = stock.history(period='5d', prepost=False)
         
@@ -83,7 +82,6 @@ async def main():
         now_str = datetime.datetime.now(kst).strftime('%Y-%m-%d %H:%M KST')
         kis_token = get_kis_access_token()
 
-        # 업데이트된 포트폴리오 목록
         portfolio = {
             "🌐 주요 지수 및 환율": {
                 "S&P 500": "^GSPC", "나스닥 종합": "^IXIC", "다우존스": "^DJI", "필라델피아 반도체": "^SOX", "VIX (공포지수)": "^VIX", 
@@ -91,7 +89,7 @@ async def main():
             },
             "📈 주요 레버리지 ETF": {"SOXL": "SOXL", "TQQQ": "TQQQ"},
             "🏛️ 미국 국채 금리 (%)": {
-                "2년물": "^IRX", "5년물": "^FVX", "10년물": "^TNX", "30년물": "^TYX"
+                "5년물": "^FVX", "10년물": "^TNX", "30년물": "^TYX"
             },
             "🛢️ 핵심 원자재": {
                 "금": "GC=F", "은": "SI=F", "WTI유": "CL=F", 
@@ -138,7 +136,7 @@ async def main():
         final_message = f"🎯 **[{now_str} 마감 글로벌 시황판]**\n"
         final_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        print("정밀 데이터 수집 시작 (색상 수정 반영)...")
+        print("정밀 데이터 수집 시작 (2년물 제외)...")
         
         for category, items in portfolio.items():
             final_message += f"**{category}**\n"
@@ -150,11 +148,10 @@ async def main():
                     info = get_yahoo_price(ticker)
                 
                 if info:
-                    # 💡 [핵심 수정] 빨간색, 파란색 원으로 직관적인 색상 구분
                     if info['change'] > 0:
                         sign = "🔴 +"
                     elif info['change'] < 0:
-                        sign = "🔵 " # 음수는 숫자에 이미 '-' 기호가 붙어 나옵니다.
+                        sign = "🔵 " 
                     else:
                         sign = "⚪️ "
                         
